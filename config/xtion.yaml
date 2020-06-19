@@ -1,0 +1,4 @@
+image_topic: "/camera/rgb/image_rect_color"
+cam_info_topic: "/camera/rgb/camera_info"
+image_freq: 30
+publish_rate: 50

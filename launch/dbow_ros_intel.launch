@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Call dbow_ros -->
+    <node pkg="dbow_ros" type="dbow_ros" name="dbow_ros" respawn="false" output="screen" >
+    <!-- Load configurations from YAML file to parameter server -->
+        <rosparam file="$(find dbow_ros)/config/intel.yaml" command="load"/> 
+    </node>  
+</launch>
