@@ -1,49 +1,20 @@
-#include <rgbd_odom_ros/rgbd_odom.h>
+#include <dbow_ros/dbow.h>
 
-
-rgbd_odom::rgbd_odom(ros::NodeHandle nh_) : it(nh_)
+dbow::dbow(ros::NodeHandle nh_) : it(nh_)
 {
 
     nh = nh_;
-
     img_inc = false;
-    firstImageCb = true;
-    firstCameraInfoCb = true;
-    isFirst = true;
-    voInitialized = false;
-
     frame = 0;
-    R_f.resize(3, 3);
-    R_f.setIdentity();
-    t_f.resize(3);
-    t_f.setZero();
-
-    R = cv::Mat::eye(3, 3, CV_64F);
-    t = cv::Mat::zeros(3, 1, CV_64F);
-
     cam_intrinsics = cv::Mat::zeros(3, 3, CV_64F);
     ros::NodeHandle n_p("~");
-
     curr_pose = Eigen::Affine3d::Identity();
     n_p.param<std::string>("image_topic", image_topic, "camera/rgb/image_rect_color");
-    n_p.param<std::string>("depth_topic", depth_topic, "camera/depth_registered/sw_registered/image_rect");
     n_p.param<std::string>("cam_info_topic", cam_info_topic, "camera/rgb/camera_info");
-    n_p.param<bool>("mm_to_meters", mm_to_meters, false);
-    n_p.param<double>("min_depth", MIN_DEPTH, 0.8);
-    n_p.param<double>("max_depth", MAX_DEPTH, 4.0);
-    n_p.param<double>("max_depth_difference", MAX_DEPTH_DIFF, 0.08);
-    n_p.param<double>("max_points_part", MAX_POINTS_PART, 0.09);
+    n_p.param<std::string>("vocabulary_path", vocabulary_path, "config/orbVoc.voc");
+
     n_p.param<double>("publish_rate", publish_rate, 50);
-
-    image_sub.subscribe(nh, image_topic, 1);
-    depth_sub.subscribe(nh, depth_topic, 1);
-
-    ts_sync = new message_filters::Synchronizer<MySyncPolicy>(MySyncPolicy(10), image_sub, depth_sub);
-
-    ts_sync->registerCallback(boost::bind(&rgbd_odom::imageDepthCb, this, _1, _2));
-
-    odom_path_pub = n_p.advertise<nav_msgs::Path>("rgbd_odom/odom/path", publish_rate);
-
+    image_sub = it_.subscribe(image_topic, 1, &dbow::imageCb, this);
     ROS_INFO("Waiting camera info");
     while (ros::ok())
     {
@@ -54,30 +25,27 @@ rgbd_odom::rgbd_odom(ros::NodeHandle nh_) : it(nh_)
             break;
         }
     }
+    ROS_INFO("Initializing DBoW");
 
-    ROS_INFO("Initializing RGBD Odometry");
-    vector<int> iterCounts(4);
-    iterCounts[0] = 7;
-    iterCounts[1] = 7;
-    iterCounts[2] = 7;
-    iterCounts[3] = 10;
-
-    vector<float> minGradMagnitudes(4);
-    minGradMagnitudes[0] = 12;
-    minGradMagnitudes[1] = 5;
-    minGradMagnitudes[2] = 3;
-    minGradMagnitudes[3] = 1;
-
-    odom = new cv::rgbd::RgbdICPOdometry(
-        cam_intrinsics, MIN_DEPTH, MAX_DEPTH, MAX_DEPTH_DIFF, MAX_POINTS_PART, iterCounts,
-        minGradMagnitudes,
-        cv::rgbd::Odometry::RIGID_BODY_MOTION);
+    voc.readFromFile(vocabulary_path);
+    desc_name=voc.getDescName();
+    //select detector
+    if (desc_name == "orb")        
+        fdetector = cv::ORB::create(2000);
+    else if (desc_name == "brisk") 
+        fdetector = cv::BRISK::create();
+    #ifdef OPENCV_VERSION_3
+    else if (desc_name == "akaze") fdetector = cv::AKAZE::create(cv::AKAZE::DESCRIPTOR_MLDB, 0, 3, 1e-4);
+    #endif
+    #ifdef USE_CONTRIB
+    else if (desc_name == "surf")  fdetector = cv::xfeatures2d::SURF::create(15, 4, 2);
+    #endif
 }
 
-void rgbd_odom::imageDepthCb(const sensor_msgs::ImageConstPtr &img_msg, const sensor_msgs::ImageConstPtr &depth_msg)
+void dbow::imageCb(const sensor_msgs::ImageConstPtr &img_msg)
 {
 
-    ROS_INFO("Image and Depth Cb");
+    ROS_INFO("Image Cb");
     cv_bridge::CvImagePtr cv_ptr;
     img_inc = true;
     try
@@ -85,166 +53,67 @@ void rgbd_odom::imageDepthCb(const sensor_msgs::ImageConstPtr &img_msg, const se
         cv_ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::BGR8);
     }
     catch (cv_bridge::Exception &e)
-
     {
         ROS_ERROR("cv_bridge RGB exception: %s", e.what());
         return;
     }
 
-    cv_bridge::CvImagePtr cv_depth_ptr;
-    try
+    if (cv_ptr->image.channels() == 3)
     {
-        cv_depth_ptr = cv_bridge::toCvCopy(depth_msg, sensor_msgs::image_encodings::TYPE_32FC1);
-    }
-    catch (cv_bridge::Exception &e)
-
-    {
-        ROS_ERROR("cv_bridge DEPTH exception: %s", e.what());
-        return;
-    }
-
-    if (mm_to_meters)
-        cv_depth_ptr->image *= 0.001;
-
-    if (firstImageCb)
-    {
-        //prevImage = cv_ptr->image;
-        if (cv_ptr->image.channels() == 3)
-        {
-            cvtColor(cv_ptr->image, prevImage, cv::COLOR_BGR2GRAY);
-        }
-        else
-        {
-            prevImage = cv_ptr->image;
-        }
-        prevDepthImage = cv_depth_ptr->image;
-        firstImageCb = false;
+        cvtColor(cv_ptr->image, currImage, cv::COLOR_BGR2GRAY);
     }
     else
     {
-        currImageRGB = cv_ptr->image;
-        if (cv_ptr->image.channels() == 3)
-        {
-            cvtColor(cv_ptr->image, currImage, cv::COLOR_BGR2GRAY);
-        }
-        else
-        {
-            currImage = cv_ptr->image;
-        }
-        currDepthImage = cv_depth_ptr->image;
-        if (!voInitialized)
-            voInitialized = true;
+        currImage = cv_ptr->image;
     }
-    frame++;
-}
+    
 
-void rgbd_odom::cameraInfoCb(const sensor_msgs::CameraInfoConstPtr &msg)
-{
-
-    if (firstCameraInfoCb)
+    features.push_back(computeFeatures(currImage));
+    fbow::fBow vv, vv2;
+    vv = voc.transform(features.front());
+    map<double, int> score;
+    for (size_t j = 1; j < features.size(); ++j)
     {
-        height = msg->height;
-        width = msg->width;
-
-        k1 = msg->D[0];
-        k2 = msg->D[1];
-        t1 = msg->D[2];
-        t2 = msg->D[3];
-        k3 = msg->D[4];
-
-        fx = msg->K[0];
-        cx = msg->K[2];
-        fy = msg->K[4];
-        cy = msg->K[5];
-
-        cam_intrinsics.at<double>(0, 0) = fx;
-        cam_intrinsics.at<double>(0, 2) = cx;
-        cam_intrinsics.at<double>(1, 1) = fx;
-        cam_intrinsics.at<double>(1, 2) = cy;
-        cam_intrinsics.at<double>(2, 2) = 1;
-        cout << "Cam Int" << cam_intrinsics << std::endl;
-        firstCameraInfoCb = false;
-    }
-}
-
-void rgbd_odom::run()
-{
-    if (!img_inc || !voInitialized)
-        return;
-
-    cv::Mat rigidTransform;
-
-    bool isSuccess = odom->compute(prevImage, prevDepthImage, cv::Mat(), currImage,
-                                   currDepthImage, cv::Mat(), rigidTransform);
-
-    cv::Mat rotationMat = rigidTransform(cv::Rect(0, 0, 3, 3)).clone();
-    cv::Mat translateMat = rigidTransform(cv::Rect(3, 0, 1, 3)).clone();
-    // If compute successfully, then update rotationMatrix and tranlslationMatrix
-    if (isSuccess == true)
-    {
-        if (isFirst == true)
-        {
-            R = rotationMat.clone();
-            t = translateMat.clone();
-            isFirst = false;
-        }
-        else
-        {
-            // Update Rt
-            t = t + (R * translateMat);
-            R = rotationMat * R;
-        }
-        for (unsigned int i = 0; i < 3; i++)
-        {
-            t_f(i) = t.at<double>(i);
-            for (unsigned int j = 0; j < 3; j++)
-            {
-                R_f(i, j) = R.at<double>(i, j);
-            }
-        }
-
-        curr_pose.translation() = t_f;
-        curr_pose.linear() = R_f;
-        //Add Visual Odometry to a Path for Plotting in rviz
-        addTfToPath(curr_pose);
-        ROS_INFO("Visual Odometry");
-        std::cout << "Translation " <<std::endl<< t_f << std::endl;
-        std::cout << "Rotation " <<std::endl<< R_f << std::endl;
-
-        publishOdomPath();
+        vv2 = voc.transform(features[j]);
+        double score1 = vv.score(vv, vv2);
+        counter++;
+        score.insert(pair<double, int>(score1, j));
+        printf("%f, ", score1);
     }
 
-    prevImage = currImage.clone();
-    prevDepthImage = currDepthImage.clone();
-    img_inc = false;
 }
 
-void rgbd_odom::addTfToPath(const Eigen::Affine3d &vision_pose)
+cv::Mat dbow::computeFeatures(cv::Mat gray_img)
 {
-    //Eigen::Affine3d pose=fromVisionCord(vision_pose);
-    Eigen::Affine3d pose = vision_pose;
-
-    Eigen::Quaterniond quat(pose.linear());
-
-    geometry_msgs::PoseStamped ps;
-    ps.header.stamp = ros::Time::now();
-    ps.header.frame_id = "odom";
-    ps.pose.position.x = pose.translation()(0);
-    ps.pose.position.y = pose.translation()(1);
-    ps.pose.position.z = pose.translation()(2);
-
-    ps.pose.orientation.x = quat.x();
-    ps.pose.orientation.y = quat.y();
-    ps.pose.orientation.z = quat.z();
-    ps.pose.orientation.w = quat.w();
-
-    odomPath.poses.push_back(ps);
+        vector<cv::KeyPoint> keypoints;
+        cv::Mat descriptors; 
+        std::cout << "extracting features" <<std::endl;
+        fdetector->detectAndCompute(gray_img, cv::Mat(), keypoints, descriptors);
+        return descriptors;
 }
 
-void rgbd_odom::publishOdomPath()
+
+void dbow::cameraInfoCb(const sensor_msgs::CameraInfoConstPtr &msg)
 {
-    nav_msgs::Path newPath = odomPath;
-    newPath.header.stamp = ros::Time::now();
-    newPath.header.frame_id = "odom";
-    odom_path_pub.publish(newPath);
+
+    height = msg->height;
+    width = msg->width;
+
+    k1 = msg->D[0];
+    k2 = msg->D[1];
+    t1 = msg->D[2];
+    t2 = msg->D[3];
+    k3 = msg->D[4];
+
+    fx = msg->K[0];
+    cx = msg->K[2];
+    fy = msg->K[4];
+    cy = msg->K[5];
+
+    cam_intrinsics.at<double>(0, 0) = fx;
+    cam_intrinsics.at<double>(0, 2) = cx;
+    cam_intrinsics.at<double>(1, 1) = fx;
+    cam_intrinsics.at<double>(1, 2) = cy;
+    cam_intrinsics.at<double>(2, 2) = 1;
+    cout << "Cam Int" << cam_intrinsics << std::endl;
 }
