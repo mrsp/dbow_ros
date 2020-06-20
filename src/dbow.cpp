@@ -8,13 +8,11 @@ dbow::dbow(ros::NodeHandle nh_) : it(nh_)
     frame = 0;
     cam_intrinsics = cv::Mat::zeros(3, 3, CV_64F);
     ros::NodeHandle n_p("~");
-    curr_pose = Eigen::Affine3d::Identity();
     n_p.param<std::string>("image_topic", image_topic, "camera/rgb/image_rect_color");
     n_p.param<std::string>("cam_info_topic", cam_info_topic, "camera/rgb/camera_info");
     n_p.param<std::string>("vocabulary_path", vocabulary_path, "config/orbVoc.voc");
 
-    n_p.param<double>("publish_rate", publish_rate, 50);
-    image_sub = it_.subscribe(image_topic, 1, &dbow::imageCb, this);
+    image_sub = it.subscribe(image_topic, 1, &dbow::imageCb, this);
     ROS_INFO("Waiting camera info");
     while (ros::ok())
     {
@@ -76,7 +74,6 @@ void dbow::imageCb(const sensor_msgs::ImageConstPtr &img_msg)
     {
         vv2 = voc.transform(features[j]);
         double score1 = vv.score(vv, vv2);
-        counter++;
         score.insert(pair<double, int>(score1, j));
         printf("%f, ", score1);
     }

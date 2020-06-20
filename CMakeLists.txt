@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 2.8.3)
 project(dbow_ros)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-# add_compile_options(-std=c++11)
+add_compile_options(-std=c++11)
+
+
 
 
 find_package(catkin REQUIRED COMPONENTS
@@ -13,11 +15,10 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 find_package(OpenCV 3 REQUIRED)
-
+set(${fbow_INCLUDE_DIRS} "/usr/local/include")
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
 ################################################
-
 
 
 catkin_package(
@@ -37,6 +38,7 @@ include_directories(
   include
   ${catkin_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}  
+  ${fbow_INCLUDE_DIRS}
 )
 ## Declare a C++ executable
 add_executable(${PROJECT_NAME} src/dbow_driver src/dbow.cpp)
@@ -44,5 +46,6 @@ add_executable(${PROJECT_NAME} src/dbow_driver src/dbow.cpp)
 target_link_libraries(${PROJECT_NAME}
   ${Boost_LIBRARIES}
   ${catkin_LIBRARIES}
-  ${OpenCV_LIBS})
+  ${OpenCV_LIBS}
+  /usr/local/lib/libfbow.so /usr/local/lib/libfbow.so.0.0  /usr/local/lib/libfbow.so.0.0.1)
 add_dependencies(${PROJECT_NAME} sensor_msgs_gencpp)

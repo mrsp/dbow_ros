@@ -1,4 +1,4 @@
 image_topic: "/d400/color/image_raw"
 cam_info_topic: "/d400/aligned_depth_to_color/camera_info"
 image_freq: 30
-publish_rate: 50
+vocabulary_path: "/home/master/talos_walk_ws/src/dbow_ros/vocabularies/orb_mur.fbow"

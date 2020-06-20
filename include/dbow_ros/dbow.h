@@ -44,7 +44,7 @@
 #endif
 #include <eigen3/Eigen/Dense>
 #include <fstream>
-#include "fbow.h"
+#include <fbow/fbow.h>
 
 
 using namespace std;
@@ -65,7 +65,7 @@ class dbow
     /// ROS image transport for image callback
     image_transport::ImageTransport it;
     /// ROS image subscriber
-    image_transport::Subscriber image_sub_;
+    image_transport::Subscriber image_sub;
     ///placeholders for  current Grayscale Image
     cv::Mat currImage;
     /// camera matrix
@@ -76,6 +76,7 @@ class dbow
     string desc_name;
     cv::Ptr<cv::Feature2D> fdetector;
     std::vector<cv::Mat> features;
+    bool img_inc;
 public:
     /** @fn  dbow_ros(ros::NodeHandle nh_);
 	 *  @brief Initializes the dbow
@@ -90,5 +91,5 @@ public:
      * @brief Camera Info Callback
      */
     void cameraInfoCb(const sensor_msgs::CameraInfoConstPtr &msg);
-    cv::Mat computeFeatures(cv::Mat gray_img)
+    cv::Mat computeFeatures(cv::Mat gray_img);
 };
