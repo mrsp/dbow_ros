@@ -77,6 +77,7 @@ class dbow
     cv::Ptr<cv::Feature2D> fdetector;
     std::vector<cv::Mat> features;
     bool img_inc;
+    int max_kf_rate;
 public:
     /** @fn  dbow_ros(ros::NodeHandle nh_);
 	 *  @brief Initializes the dbow

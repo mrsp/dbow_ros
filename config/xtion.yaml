@@ -1,4 +1,4 @@
 image_topic: "/camera/rgb/image_rect_color"
 cam_info_topic: "/camera/rgb/camera_info"
-image_freq: 30
-publish_rate: 50
+vocabulary_path: "/home/master/talos_walk_ws/src/dbow_ros/vocabularies/orb_mur.fbow"
+max_kf_rate: 30

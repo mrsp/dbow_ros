@@ -11,6 +11,7 @@ dbow::dbow(ros::NodeHandle nh_) : it(nh_)
     n_p.param<std::string>("image_topic", image_topic, "camera/rgb/image_rect_color");
     n_p.param<std::string>("cam_info_topic", cam_info_topic, "camera/rgb/camera_info");
     n_p.param<std::string>("vocabulary_path", vocabulary_path, "config/orbVoc.voc");
+    n_p.param<int>("max_kf_rate",max_kf_rate,30);
 
     image_sub = it.subscribe(image_topic, 1, &dbow::imageCb, this);
     ROS_INFO("Waiting camera info");
@@ -43,7 +44,6 @@ dbow::dbow(ros::NodeHandle nh_) : it(nh_)
 void dbow::imageCb(const sensor_msgs::ImageConstPtr &img_msg)
 {
 
-    ROS_INFO("Image Cb");
     cv_bridge::CvImagePtr cv_ptr;
     img_inc = true;
     try
@@ -64,8 +64,11 @@ void dbow::imageCb(const sensor_msgs::ImageConstPtr &img_msg)
     {
         currImage = cv_ptr->image;
     }
+    frame++;
+    if(frame%max_kf_rate!=0)
+        return;
     
-
+    frame=0;
     features.push_back(computeFeatures(currImage));
     fbow::fBow vv, vv2;
     vv = voc.transform(features.front());
