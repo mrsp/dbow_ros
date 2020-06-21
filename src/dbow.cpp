@@ -12,6 +12,7 @@ dbow::dbow(ros::NodeHandle nh_) : it(nh_)
     n_p.param<std::string>("cam_info_topic", cam_info_topic, "camera/rgb/camera_info");
     n_p.param<std::string>("vocabulary_path", vocabulary_path, "config/orbVoc.voc");
     n_p.param<int>("max_kf_rate",max_kf_rate,30);
+    n_p.param<int>("max_kfs",max_kfs,100);
 
     image_sub = it.subscribe(image_topic, 1, &dbow::imageCb, this);
     ROS_INFO("Waiting camera info");
@@ -30,7 +31,7 @@ dbow::dbow(ros::NodeHandle nh_) : it(nh_)
     desc_name=voc.getDescName();
     //select detector
     if (desc_name == "orb")        
-        fdetector = cv::ORB::create(2000);
+        fdetector = cv::ORB::create(5000);
     else if (desc_name == "brisk") 
         fdetector = cv::BRISK::create();
     #ifdef OPENCV_VERSION_3
@@ -70,16 +71,24 @@ void dbow::imageCb(const sensor_msgs::ImageConstPtr &img_msg)
     
     frame=0;
     features.push_back(computeFeatures(currImage));
+
+    if(features.size()>max_kfs)
+        features.pop_front();
+
     fbow::fBow vv, vv2;
-    vv = voc.transform(features.front());
+    vv = voc.transform(features.back());
+    std::cout << "new KF "<<features.size()<<std::endl;
     map<double, int> score;
-    for (size_t j = 1; j < features.size(); ++j)
+    std::cout << "scores: " <<std::endl;
+
+    for (size_t j = 0; j < features.size()-1; ++j)
     {
         vv2 = voc.transform(features[j]);
         double score1 = vv.score(vv, vv2);
         score.insert(pair<double, int>(score1, j));
-        printf("%f, ", score1);
+        std::cout << score1 <<" ";
     }
+    std::cout<<std::endl<< "--------" <<std::endl;
 
 }
 
@@ -87,7 +96,6 @@ cv::Mat dbow::computeFeatures(cv::Mat gray_img)
 {
         vector<cv::KeyPoint> keypoints;
         cv::Mat descriptors; 
-        std::cout << "extracting features" <<std::endl;
         fdetector->detectAndCompute(gray_img, cv::Mat(), keypoints, descriptors);
         return descriptors;
 }

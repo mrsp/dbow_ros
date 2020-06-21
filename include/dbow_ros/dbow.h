@@ -45,8 +45,7 @@
 #include <eigen3/Eigen/Dense>
 #include <fstream>
 #include <fbow/fbow.h>
-
-
+#include<deque>
 using namespace std;
 
 
@@ -75,9 +74,9 @@ class dbow
     fbow::Vocabulary voc;
     string desc_name;
     cv::Ptr<cv::Feature2D> fdetector;
-    std::vector<cv::Mat> features;
+    std::deque<cv::Mat> features;
     bool img_inc;
-    int max_kf_rate;
+    int max_kf_rate, max_kfs;
 public:
     /** @fn  dbow_ros(ros::NodeHandle nh_);
 	 *  @brief Initializes the dbow
